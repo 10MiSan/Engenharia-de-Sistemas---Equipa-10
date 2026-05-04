@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="pt">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MQTT Room - {{ role|capitalize }}</title>
+    <style>
+      body { font-family: Arial, sans-serif; max-width: 900px; margin: 2rem auto; padding: 1rem; }
+      header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+      h1 { margin: 0; }
+      .status { color: #444; }
+      .card { border: 1px solid #ddd; border-radius: 10px; padding: 1rem; margin-top: 1rem; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+      .messages { border: 1px solid #eee; min-height: 260px; padding: 1rem; border-radius: 8px; background: #fafafa; overflow-y: auto; }
+      .message { margin-bottom: 0.85rem; }
+      .message strong { display: block; margin-bottom: 0.25rem; }
+      .message span { color: #555; }
+      .sender { color: #1f8ceb; }
+      .receiver { color: #20b74b; }
+      .controls { margin-top: 1rem; display: grid; gap: 0.75rem; }
+      .controls textarea { width: 100%; height: 120px; resize: vertical; padding: 0.85rem; border-radius: 8px; border: 1px solid #ccc; }
+      .controls button { width: fit-content; padding: 0.85rem 1.2rem; border: none; color: #fff; border-radius: 8px; cursor: pointer; background: #1f8ceb; }
+      .controls button:disabled { opacity: 0.6; cursor: not-allowed; }
+      .footer { margin-top: 1rem; color: #666; font-size: 0.95rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Role: {{ role|capitalize }}</h1>
+        <p class="status">Broker: <code>ws://localhost:9001</code></p>
+      </div>
+      <a href="/">Voltar</a>
+    </header>
+
+    <div class="card">
+      <div class="status">Conexão: <strong id="connection-status">A conectar...</strong></div>
+      <div class="messages" id="messages"></div>
+      <div class="controls">
+        <textarea id="message-input" placeholder="Digite a mensagem para enviar..." {{ 'disabled' if role != 'transmitter' }}></textarea>
+        <button id="send-button" {{ 'disabled' if role != 'transmitter' }}>Enviar</button>
+      </div>
+      <p class="footer">Todos os usuários assinam o tópico <code>esist/chat</code>. Apenas o transmitter pode enviar mensagens.</p>
+    </div>
+
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script>
+      const role = "{{ role }}";
+      const brokerUrl = "ws://localhost:9001";
+      const topic = "esist/chat";
+      const clientId = `webapp-${Math.random().toString(16).slice(2, 10)}`;
+
+      const statusEl = document.getElementById("connection-status");
+      const messagesEl = document.getElementById("messages");
+      const inputEl = document.getElementById("message-input");
+      const buttonEl = document.getElementById("send-button");
+
+      function appendMessage(sender, text, date) {
+        const messageEl = document.createElement("div");
+        messageEl.className = "message";
+        messageEl.innerHTML = `
+          <strong>${sender} <span style="font-size:0.9rem;color:#888;">${date}</span></strong>
+          <span>${text}</span>
+        `;
+        messagesEl.appendChild(messageEl);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+
+      const client = mqtt.connect(brokerUrl, {
+        clientId,
+        keepalive: 30,
+        reconnectPeriod: 2000,
+      });
+
+      client.on("connect", () => {
+        statusEl.textContent = "Conectado";
+        statusEl.style.color = "#20b74b";
+        client.subscribe(topic, { qos: 0 }, (err) => {
+          if (err) {
+            appendMessage("Sistema", "Falha ao inscrever no tópico.", new Date().toLocaleTimeString());
+          }
+        });
+      });
+
+      client.on("reconnect", () => {
+        statusEl.textContent = "Reconectando...";
+        statusEl.style.color = "#f0a500";
+      });
+
+      client.on("error", (err) => {
+        statusEl.textContent = `Erro: ${err.message}`;
+        statusEl.style.color = "#d92b2b";
+      });
+
+      client.on("message", (topic, payload) => {
+        try {
+          const data = JSON.parse(payload.toString());
+          appendMessage(data.sender === role ? `${data.sender} (você)` : data.sender, data.message, new Date(data.ts).toLocaleTimeString());
+        } catch (error) {
+          appendMessage("MQTT", payload.toString(), new Date().toLocaleTimeString());
+        }
+      });
+
+      if (buttonEl) {
+        buttonEl.addEventListener("click", () => {
+          const message = inputEl.value.trim();
+          if (!message) {
+            return;
+          }
+          const payload = JSON.stringify({ sender: role, message, ts: Date.now() });
+          client.publish(topic, payload, { qos: 0 }, (err) => {
+            if (err) {
+              appendMessage("Sistema", "Não foi possível publicar a mensagem.", new Date().toLocaleTimeString());
+            } else {
+              inputEl.value = "";
+            }
+          });
+        });
+      }
+    </script>
+  </body>
+</html>

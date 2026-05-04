@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Receiver MQTT</title>
+    <style>
+      body { font-family: Arial, sans-serif; max-width: 900px; margin: 2rem auto; padding: 1rem; }
+      header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+      h1 { margin: 0; }
+      .status { color: #444; }
+      .card { border: 1px solid #ddd; border-radius: 10px; padding: 1rem; margin-top: 1rem; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+      .messages { border: 1px solid #eee; min-height: 260px; padding: 1rem; border-radius: 8px; background: #fafafa; overflow-y: auto; }
+      .message { margin-bottom: 0.85rem; }
+      .message strong { display: block; margin-bottom: 0.25rem; }
+      .message span { color: #555; }
+      .footer { margin-top: 1rem; color: #666; font-size: 0.95rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Role: Receiver</h1>
+        <p class="status">Broker: <code>ws://localhost:9001</code></p>
+      </div>
+      <a href="/">Voltar</a>
+    </header>
+
+    <div class="card">
+      <div class="status">Conexão: <strong id="connection-status">A conectar...</strong></div>
+      <div class="messages" id="messages"></div>
+      <p class="footer">O receiver apenas recebe mensagens e responde automaticamente com "Mensagem Recibada".</p>
+    </div>
+
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script>
+      const role = "receiver";
+      const brokerUrl = "ws://localhost:9001";
+      const topic = "esist/chat";
+      const clientId = `webapp-${Math.random().toString(16).slice(2, 10)}`;
+
+      const statusEl = document.getElementById("connection-status");
+      const messagesEl = document.getElementById("messages");
+
+      function appendMessage(sender, text, date) {
+        const messageEl = document.createElement("div");
+        messageEl.className = "message";
+        messageEl.innerHTML = `
+          <strong>${sender} <span style="font-size:0.9rem;color:#888;">${date}</span></strong>
+          <span>${text}</span>
+        `;
+        messagesEl.appendChild(messageEl);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+
+      const client = mqtt.connect(brokerUrl, {
+        clientId,
+        keepalive: 30,
+        reconnectPeriod: 2000,
+      });
+
+      client.on("connect", () => {
+        statusEl.textContent = "Conectado";
+        statusEl.style.color = "#20b74b";
+        client.subscribe(topic, { qos: 0 }, (err) => {
+          if (err) {
+            appendMessage("Sistema", "Falha ao inscrever no tópico.", new Date().toLocaleTimeString());
+          }
+        });
+      });
+
+      client.on("reconnect", () => {
+        statusEl.textContent = "Reconectando...";
+        statusEl.style.color = "#f0a500";
+      });
+
+      client.on("error", (err) => {
+        statusEl.textContent = `Erro: ${err.message}`;
+        statusEl.style.color = "#d92b2b";
+      });
+
+      client.on("message", (topic, payload) => {
+        try {
+          const data = JSON.parse(payload.toString());
+          appendMessage(data.sender, data.message, new Date(data.ts).toLocaleTimeString());
+
+          if (data.type === "message" && data.sender === "transmitter") {
+            const ackPayload = JSON.stringify({ sender: role, type: "ack", message: "Mensagem Recibada", ts: Date.now() });
+            client.publish(topic, ackPayload, { qos: 0 });
+          }
+        } catch (error) {
+          appendMessage("MQTT", payload.toString(), new Date().toLocaleTimeString());
+        }
+      });
+    </script>
+  </body>
+</html>

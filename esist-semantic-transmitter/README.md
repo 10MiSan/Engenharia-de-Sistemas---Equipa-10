@@ -10,5 +10,5 @@ py -3 -m pip install -r requirements.txt
 ## Run
 
 ```bash
-py -3 -m streamlit run app.py
+py -3 -m streamlit run front-end/semantic_communication.py
 ```

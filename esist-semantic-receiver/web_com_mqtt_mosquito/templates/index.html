@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MQTT Webapp</title>
+    <style>
+      body { font-family: Arial, sans-serif; max-width: 720px; margin: 2rem auto; padding: 1rem; }
+      h1, p { margin-bottom: 1rem; }
+      .card { border: 1px solid #ddd; border-radius: 8px; padding: 1.25rem; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+      .buttons { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem; }
+      .buttons a { flex: 1; text-align: center; padding: 0.75rem 1rem; text-decoration: none; color: #fff; border-radius: 6px; }
+      .tx { background: #1f8ceb; }
+      .rx { background: #20b74b; }
+    </style>
+  </head>
+  <body>
+    <h1>MQTT Webapp</h1>
+    <div class="card">
+      <p>Escolha um role para conectar via MQTT com Mosquitto. Abra duas abas diferentes para usar um <strong>transmitter</strong> e um <strong>receiver</strong>.</p>
+      <div class="buttons">
+        <a class="tx" href="/transmitter">Entrar como Transmitter</a>
+        <a class="rx" href="/receiver">Entrar como Receiver</a>
+      </div>
+      <p style="margin-top:1rem;color:#555;">O broker WebSocket está configurado para <code>ws://localhost:9001</code>.</p>
+    </div>
+  </body>
+</html>
