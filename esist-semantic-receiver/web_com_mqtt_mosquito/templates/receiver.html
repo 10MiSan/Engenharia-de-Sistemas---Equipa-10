@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Receiver MQTT</title>
+    <title>Receiver</title>
     <style>
       body { font-family: Arial, sans-serif; max-width: 900px; margin: 2rem auto; padding: 1rem; }
       header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
@@ -15,13 +15,21 @@
       .message strong { display: block; margin-bottom: 0.25rem; }
       .message span { color: #555; }
       .footer { margin-top: 1rem; color: #666; font-size: 0.95rem; }
+      .submenu-tabs { display: flex; gap: 0.5rem; margin-top: 1rem; border-bottom: 2px solid #ddd; }
+      .submenu-tab { padding: 0.75rem 1rem; cursor: pointer; border: none; background: none; font-size: 1rem; color: #666; border-bottom: 3px solid transparent; transition: all 0.3s ease; }
+      .submenu-tab.active { color: #1f8ceb; border-bottom-color: #1f8ceb; }
+      .submenu-content { margin-top: 1rem; padding: 1rem; background: #fafafa; border-radius: 8px; border: 1px solid #eee; }
+      .submenu-content.hidden { display: none; }
+      .validation-item { margin-bottom: 0.5rem; padding: 0.5rem; border-radius: 4px; }
+      .validation-pass { background: #e8f5e9; color: #2e7d32; }
+      .validation-fail { background: #ffebee; color: #c62828; }
+      .decoded-content { background: #fff; padding: 0.75rem; border-radius: 4px; border: 1px solid #ccc; font-family: monospace; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; }
     </style>
   </head>
   <body>
     <header>
       <div>
-        <h1>Role: Receiver</h1>
-        <p class="status">Broker: <code>ws://localhost:9001</code></p>
+        <h1>Receiver</h1>
       </div>
       <a href="/">Voltar</a>
     </header>
@@ -29,6 +37,51 @@
     <div class="card">
       <div class="status">Conexão: <strong id="connection-status">A conectar...</strong></div>
       <div class="messages" id="messages"></div>
+
+      <!-- Submenus -->
+      <div class="submenu-tabs">
+        <button class="submenu-tab active" data-submenu="validation">Validação</button>
+        <button class="submenu-tab" data-submenu="decoding">Descodificação</button>
+        <button class="submenu-tab" data-submenu="reconstruction">Reconstrução</button>
+        <button class="submenu-tab" data-submenu="output">Output</button>
+      </div>
+
+      <!-- Validação -->
+      <div id="validation" class="submenu-content">
+        <h3>Validação de Dados</h3>
+        <div id="validation-results"></div>
+      </div>
+
+      <!-- Descodificação -->
+      <div id="decoding" class="submenu-content hidden">
+        <h3>Descodificação</h3>
+        <div id="decoding-results">
+          <p style="color: #666;">Aguardando mensagens...</p>
+        </div>
+      </div>
+
+      <!-- Reconstrução -->
+      <div id="reconstruction" class="submenu-content hidden">
+        <h3>Reconstrução</h3>
+        <div style="margin-bottom: 1rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+          <label><input type="radio" name="reconstruction-mode" value="1" checked> Opção 1</label>
+          <label><input type="radio" name="reconstruction-mode" value="2"> Opção 2</label>
+          <button id="start-reconstruction" style="padding: 0.75rem 1rem; border:none; border-radius:8px; background:#1f8ceb; color:#fff; cursor:pointer;">Começar</button>
+        </div>
+        <div id="reconstruction-results">
+          <p style="color: #666;">Escolha uma opção e carregue em "Começar" para reconstruir.</p>
+        </div>
+      </div>
+
+      <!-- Output -->
+      <div id="output" class="submenu-content hidden">
+        <h3>Output</h3>
+        <div id="output-results">
+          <p style="color: #666;">Nenhuma saída disponível</p>
+        </div>
+        <audio id="output-audio" controls style="width:100%; margin-top:1rem; display:none;"></audio>
+      </div>
+
       <p class="footer">O receiver apenas recebe mensagens e responde automaticamente com "Mensagem Recibada".</p>
     </div>
 
@@ -41,6 +94,26 @@
 
       const statusEl = document.getElementById("connection-status");
       const messagesEl = document.getElementById("messages");
+      const validationResultsEl = document.getElementById("validation-results");
+      const decodingResultsEl = document.getElementById("decoding-results");
+      const reconstructionResultsEl = document.getElementById("reconstruction-results");
+      const outputResultsEl = document.getElementById("output-results");
+      const outputAudioEl = document.getElementById("output-audio");
+      const startReconstructionBtn = document.getElementById("start-reconstruction");
+
+      let lastReceivedData = null;
+      let lastValidPayload = null;
+
+      // Gerenciar abas de submenus
+      document.querySelectorAll(".submenu-tab").forEach(tab => {
+        tab.addEventListener("click", () => {
+          document.querySelectorAll(".submenu-tab").forEach(t => t.classList.remove("active"));
+          document.querySelectorAll(".submenu-content").forEach(c => c.classList.add("hidden"));
+          
+          tab.classList.add("active");
+          document.getElementById(tab.dataset.submenu).classList.remove("hidden");
+        });
+      });
 
       function appendMessage(sender, text, date) {
         const messageEl = document.createElement("div");
@@ -52,6 +125,183 @@
         messagesEl.appendChild(messageEl);
         messagesEl.scrollTop = messagesEl.scrollHeight;
       }
+
+      function clearElement(el) {
+        el.innerHTML = "";
+      }
+
+      function addValidationResult(name, passed, error) {
+        const div = document.createElement("div");
+        div.className = `validation-item ${passed ? "validation-pass" : "validation-fail"}`;
+        div.innerHTML = `<strong>${passed ? "✓" : "✗"} ${name}</strong>${error ? `<br><small>${error}</small>` : ""}`;
+        validationResultsEl.appendChild(div);
+      }
+
+      function validateData(data, rawPayload) {
+        clearElement(validationResultsEl);
+        const validations = [];
+
+        try {
+          JSON.parse(rawPayload.toString());
+          validations.push({ name: "JSON Válido", passed: true });
+        } catch (e) {
+          validations.push({ name: "JSON Válido", passed: false, error: e.message });
+        }
+
+        const hasRequired = data && data.sender && data.message && data.ts;
+        validations.push({ name: "Campos Obrigatórios", passed: hasRequired, error: hasRequired ? null : "Faltam campos: sender, message, ts" });
+
+        const typeCheck = data && typeof data.sender === "string" && typeof data.message === "string" && typeof data.ts === "number";
+        validations.push({ name: "Tipos Corretos", passed: typeCheck, error: typeCheck ? null : "Tipos incorretos nos campos" });
+
+        const sizeValid = data && typeof data.message === "string" && data.message.length > 0 && data.message.length <= 10000;
+        validations.push({ name: "Tamanho da Mensagem", passed: sizeValid, error: sizeValid ? null : "Mensagem vazia ou muito grande" });
+
+        validations.forEach(v => addValidationResult(v.name, v.passed, v.error));
+        return validations.every(v => v.passed);
+      }
+
+      function renderDecodedData(data) {
+        clearElement(decodingResultsEl);
+        const decodedDiv = document.createElement("div");
+        decodedDiv.innerHTML = `
+          <h4>Dados Descodificados:</h4>
+          <p><strong>Remetente:</strong> ${data.sender}</p>
+          <p><strong>Mensagem:</strong></p>
+          <div class="decoded-content">${data.message}</div>
+          <p><strong>Timestamp:</strong> ${new Date(data.ts).toLocaleString()}</p>
+          <p><strong>Tipo:</strong> ${data.type || "message"}</p>
+        `;
+        decodingResultsEl.appendChild(decodedDiv);
+
+        const decodedText = tryBase64Decode(data.message);
+        if (decodedText !== null && decodedText !== data.message) {
+          const base64Div = document.createElement("div");
+          base64Div.innerHTML = `
+            <hr>
+            <h4>Descodificação Base64:</h4>
+            <div class="decoded-content">${decodedText}</div>
+          `;
+          decodingResultsEl.appendChild(base64Div);
+        }
+      }
+
+      function tryBase64Decode(value) {
+        try {
+          return atob(value);
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function isAudioData(value) {
+        return typeof value === "string" && /^[A-Za-z0-9+/]+=*$/.test(value) && value.length % 4 === 0;
+      }
+
+      function createAudioBlobFromBase64(value) {
+        const binary = atob(value);
+        const array = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          array[i] = binary.charCodeAt(i);
+        }
+        return new Blob([array.buffer], { type: "audio/wav" });
+      }
+
+      function createFallbackAudio(message, mode) {
+        const sampleRate = 44100;
+        const duration = Math.max(0.5, Math.min(4, message.length / 20));
+        const frameCount = Math.floor(sampleRate * duration);
+        const buffer = new Float32Array(frameCount);
+        const baseFreq = mode === "2" ? 440 : 330;
+        for (let i = 0; i < frameCount; i++) {
+          const t = i / sampleRate;
+          buffer[i] = Math.sin(2 * Math.PI * baseFreq * t) * 0.1 * (1 - t / duration);
+        }
+        return encodeWavFromFloat32(buffer, sampleRate);
+      }
+
+      function encodeWavFromFloat32(samples, sampleRate) {
+        const buffer = new ArrayBuffer(44 + samples.length * 2);
+        const view = new DataView(buffer);
+
+        function writeString(offset, string) {
+          for (let i = 0; i < string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+          }
+        }
+
+        writeString(0, 'RIFF');
+        view.setUint32(4, 36 + samples.length * 2, true);
+        writeString(8, 'WAVE');
+        writeString(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        writeString(36, 'data');
+        view.setUint32(40, samples.length * 2, true);
+
+        let offset = 44;
+        for (let i = 0; i < samples.length; i++, offset += 2) {
+          const s = Math.max(-1, Math.min(1, samples[i]));
+          view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        }
+        return new Blob([view], { type: 'audio/wav' });
+      }
+
+      function updateReconstructionInfo(data, mode) {
+        const option = mode === "2" ? "Opção 2" : "Opção 1";
+        reconstructionResultsEl.innerHTML = `
+          <p><strong>Método:</strong> ${option}</p>
+          <p><strong>ID da Mensagem:</strong> ${data.sender}-${data.ts}</p>
+          <p><strong>Estado:</strong> Reconstrução iniciada</p>
+          <p><strong>Detalhes:</strong> A mensagem foi processada com a opção escolhida.</p>
+        `;
+      }
+
+      function updateOutputInfo(data, description) {
+        outputResultsEl.innerHTML = `
+          <p><strong>Fonte do áudio:</strong> ${description}</p>
+          <p><strong>Mensagem:</strong> ${data.message}</p>
+        `;
+      }
+
+      function setAudioSource(blob) {
+        if (outputAudioEl.src) {
+          URL.revokeObjectURL(outputAudioEl.src);
+        }
+        outputAudioEl.src = URL.createObjectURL(blob);
+        outputAudioEl.style.display = "block";
+      }
+
+      startReconstructionBtn.addEventListener("click", () => {
+        if (!lastReceivedData) {
+          reconstructionResultsEl.innerHTML = `<p style="color:#c62828;">Nenhuma mensagem disponível para reconstrução.</p>`;
+          return;
+        }
+
+        const mode = document.querySelector("input[name='reconstruction-mode']:checked").value;
+        updateReconstructionInfo(lastReceivedData, mode);
+
+        let blob;
+        if (lastValidPayload && isAudioData(lastReceivedData.message)) {
+          try {
+            blob = createAudioBlobFromBase64(lastReceivedData.message);
+            updateOutputInfo(lastReceivedData, "Áudio Base64 reconstruído");
+          } catch (e) {
+            blob = createFallbackAudio(lastReceivedData.message, mode);
+            updateOutputInfo(lastReceivedData, "Áudio sintetizado a partir da mensagem");
+          }
+        } else {
+          blob = createFallbackAudio(lastReceivedData.message, mode);
+          updateOutputInfo(lastReceivedData, "Áudio sintetizado a partir da mensagem");
+        }
+
+        setAudioSource(blob);
+      });
 
       const client = mqtt.connect(brokerUrl, {
         clientId,
@@ -82,7 +332,18 @@
       client.on("message", (topic, payload) => {
         try {
           const data = JSON.parse(payload.toString());
-          appendMessage(data.sender, data.message, new Date(data.ts).toLocaleTimeString());
+          lastReceivedData = data;
+          lastValidPayload = payload;
+
+          const isValid = validateData(data, payload);
+          renderDecodedData(data);
+
+          if (!isValid) {
+            appendMessage("Sistema", "Dados inválidos recebidos.", new Date().toLocaleTimeString());
+            return;
+          }
+
+          appendMessage(data.sender === role ? `${data.sender} (você)` : data.sender, data.message, new Date(data.ts).toLocaleTimeString());
 
           if (data.type === "message" && data.sender === "transmitter") {
             const ackPayload = JSON.stringify({ sender: role, type: "ack", message: "Mensagem Recibada", ts: Date.now() });
@@ -90,6 +351,7 @@
           }
         } catch (error) {
           appendMessage("MQTT", payload.toString(), new Date().toLocaleTimeString());
+          validationResultsEl.innerHTML = `<div class="validation-item validation-fail"><strong>✗ JSON Inválido</strong><br><small>${error.message}</small></div>`;
         }
       });
     </script>

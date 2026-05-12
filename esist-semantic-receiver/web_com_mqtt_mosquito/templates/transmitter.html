@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Transmitter MQTT</title>
+    <title>Transmitter</title>
     <style>
       body { font-family: Arial, sans-serif; max-width: 900px; margin: 2rem auto; padding: 1rem; }
       header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
@@ -24,8 +24,7 @@
   <body>
     <header>
       <div>
-        <h1>Role: Transmitter</h1>
-        <p class="status">Broker: <code>ws://localhost:9001</code></p>
+        <h1>Transmitter</h1>
       </div>
       <a href="/">Voltar</a>
     </header>
@@ -37,7 +36,6 @@
         <textarea id="message-input" placeholder="Digite a mensagem para enviar..."></textarea>
         <button id="send-button">Enviar</button>
       </div>
-      <p class="footer">O transmitter envia mensagens ao tópico <code>esist/chat</code>. O receiver responde automaticamente com "Mensagem Recibada".</p>
     </div>
 
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
