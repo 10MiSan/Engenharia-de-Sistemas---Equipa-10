@@ -1,2 +1,0 @@
-"""Semantic audio transmitter package."""
-
